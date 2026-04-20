@@ -1,0 +1,19 @@
+{
+  "name": "personal-memory-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Conversation-centered personal memory system V1 scaffold.",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch src/index.js",
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "test": "node --test",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js",
+    "seed": "node --env-file-if-exists=.env scripts/seed-data.js",
+    "backfill-embeddings": "node --env-file-if-exists=.env scripts/backfill-embeddings.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

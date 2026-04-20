@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment variables — copy .env.example to .env and fill in
+.env
+.env.*
+!.env.example
+
+# Database & backups
+data/*.db
+data/*.db-journal
+data/*.sqlite
+backups/
+
+# Person model — personal information, never commit
+data/person-model.md
+
+# Runtime
+*.log
+.DS_Store
+
+# Xcode
+apps/apple/PersonalMemoryClient.xcodeproj/xcuserdata/
+apps/apple/PersonalMemoryClient.xcodeproj/project.xcworkspace/xcuserdata/
+apps/apple/build/
+*.xccheckout
+*.xcscmblueprint
+DerivedData/

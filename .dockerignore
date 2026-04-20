@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+apps/apple/PersonalMemoryClient.xcodeproj
+apps/apple/.build
+data/*.db-shm
+data/*.db-wal
+coverage
