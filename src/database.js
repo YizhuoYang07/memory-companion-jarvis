@@ -3,12 +3,12 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
-export function createDatabase(databasePath) {
+export function createDatabase(databasePath, { now = () => new Date() } = {}) {
   ensureParentDirectory(databasePath);
   const db = new DatabaseSync(databasePath);
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec(schemaSql);
-  return createRepository(db);
+  return createRepository(db, now);
 }
 
 function ensureParentDirectory(databasePath) {
@@ -16,7 +16,10 @@ function ensureParentDirectory(databasePath) {
   fs.mkdirSync(parentDir, { recursive: true });
 }
 
-function createRepository(db) {
+function createRepository(db, now = () => new Date()) {
+  function nowIso() {
+    return now().toISOString();
+  }
   return {
     createConversation(title) {
       const id = randomUUID();
@@ -472,9 +475,7 @@ function tokenize(text) {
   return new Set([...englishTokens, ...cjkTokens]);
 }
 
-function nowIso() {
-  return new Date().toISOString();
-}
+// (nowIso is now defined as a closure inside createRepository)
 
 const schemaSql = `
 CREATE TABLE IF NOT EXISTS conversations (

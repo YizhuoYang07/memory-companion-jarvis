@@ -8,7 +8,8 @@ import { createChatService } from "../src/chat-service.js";
 
 function createHarness() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "memory-system-"));
-  const repository = createDatabase(path.join(tempDir, "memory.db"));
+  const now = () => new Date("2026-03-10T10:00:00.000Z");
+  const repository = createDatabase(path.join(tempDir, "memory.db"), { now });
   const modelProvider = {
     kind: "test-double",
     async respond(input) {
@@ -18,7 +19,7 @@ function createHarness() {
   const service = createChatService({
     repository,
     modelProvider,
-    now: () => new Date("2026-03-10T10:00:00.000Z"),
+    now,
   });
   return { service };
 }

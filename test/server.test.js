@@ -9,7 +9,8 @@ import { createServer } from "../src/server.js";
 
 function createHarness(options = {}) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "memory-system-server-"));
-  const repository = createDatabase(path.join(tempDir, "memory.db"));
+  const now = () => new Date("2026-03-10T12:00:00.000Z");
+  const repository = createDatabase(path.join(tempDir, "memory.db"), { now });
   const modelProvider = {
     kind: "test-double",
     async respond(input) {
@@ -23,7 +24,7 @@ function createHarness(options = {}) {
   const service = createChatService({
     repository,
     modelProvider,
-    now: () => new Date("2026-03-10T12:00:00.000Z"),
+    now,
   });
   const server = createServer(service, options.serverOptions);
   return { service, server };
