@@ -2,12 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { getEntityDefinition } from "./entities.js";
 
 export function createDatabase(databasePath, { now = () => new Date() } = {}) {
   ensureParentDirectory(databasePath);
   const db = new DatabaseSync(databasePath);
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec(schemaSql);
+  migrateSchema(db);
   return createRepository(db, now);
 }
 
@@ -16,10 +18,27 @@ function ensureParentDirectory(databasePath) {
   fs.mkdirSync(parentDir, { recursive: true });
 }
 
-function createRepository(db, now = () => new Date()) {
-  function nowIso() {
-    return now().toISOString();
+function migrateSchema(db) {
+  ensureColumn(db, "profile_facts", "status", "TEXT NOT NULL DEFAULT 'active'");
+  ensureColumn(db, "profile_facts", "status_reason", "TEXT");
+  ensureColumn(db, "profile_facts", "status_updated_at", "TEXT");
+  ensureColumn(db, "memory_events", "status", "TEXT NOT NULL DEFAULT 'active'");
+  ensureColumn(db, "memory_events", "status_reason", "TEXT");
+  ensureColumn(db, "memory_events", "status_updated_at", "TEXT");
+  ensureColumn(db, "corrections", "target_type", "TEXT");
+  ensureColumn(db, "corrections", "target_id", "TEXT");
+  ensureColumn(db, "corrections", "applied_at", "TEXT");
+}
+
+function ensureColumn(db, tableName, columnName, definition) {
+  const existing = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (existing.some((column) => column.name === columnName)) {
+    return;
   }
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition};`);
+}
+
+function createRepository(db, now) {
   return {
     createConversation(title) {
       const id = randomUUID();
@@ -27,7 +46,7 @@ function createRepository(db, now = () => new Date()) {
       db.prepare(
         `INSERT INTO conversations (id, title, created_at, updated_at)
          VALUES (?, ?, ?, ?)`
-      ).run(id, normalizedTitle, nowIso(), nowIso());
+      ).run(id, normalizedTitle, nowIso(now), nowIso(now));
       return this.getConversation(id);
     },
 
@@ -41,7 +60,7 @@ function createRepository(db, now = () => new Date()) {
 
     updateConversation(conversationId, title) {
       const normalizedTitle = title?.trim() || "main";
-      const updatedAt = nowIso();
+      const updatedAt = nowIso(now);
       const result = db.prepare(
         `UPDATE conversations
          SET title = ?, updated_at = ?
@@ -74,7 +93,7 @@ function createRepository(db, now = () => new Date()) {
       db.prepare(
         `INSERT OR REPLACE INTO external_conversations (external_key, conversation_id, created_at)
          VALUES (?, ?, ?)`
-      ).run(externalKey, conversationId, nowIso());
+      ).run(externalKey, conversationId, nowIso(now));
     },
 
     listConversations() {
@@ -112,7 +131,7 @@ function createRepository(db, now = () => new Date()) {
       const nextSequence =
         db.prepare("SELECT COALESCE(MAX(sequence), 0) + 1 AS nextSequence FROM messages WHERE conversation_id = ?")
           .get(conversationId).nextSequence;
-      const createdAt = nowIso();
+      const createdAt = nowIso(now);
       db.prepare(
         `INSERT INTO messages (id, conversation_id, role, text, sequence, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`
@@ -131,7 +150,7 @@ function createRepository(db, now = () => new Date()) {
       db.prepare(
         `INSERT OR REPLACE INTO external_messages (external_key, message_id, conversation_id, created_at)
          VALUES (?, ?, ?, ?)`
-      ).run(externalKey, messageId, conversationId, nowIso());
+      ).run(externalKey, messageId, conversationId, nowIso(now));
     },
 
     findRelevantMessages(queryTokens, conversationId, limit = 8) {
@@ -157,17 +176,22 @@ function createRepository(db, now = () => new Date()) {
     createMemoryEvent({ conversationId, sourceMessageId, summary, score = 0.5, occurredAt = null }) {
       const id = randomUUID();
       db.prepare(
-        `INSERT INTO memory_events (id, conversation_id, source_message_id, summary, score, occurred_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      ).run(id, conversationId, sourceMessageId, summary, score, occurredAt || nowIso(), nowIso());
+        `INSERT INTO memory_events (
+           id, conversation_id, source_message_id, summary, score, occurred_at, created_at,
+           status, status_reason, status_updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?)`
+      ).run(id, conversationId, sourceMessageId, summary, score, occurredAt || nowIso(now), nowIso(now), nowIso(now));
       return id;
     },
 
     listMemoryEvents(limit = 50) {
       return db.prepare(
         `SELECT id, conversation_id AS conversationId, source_message_id AS sourceMessageId,
-                summary, score, occurred_at AS occurredAt, created_at AS createdAt
+                summary, score, occurred_at AS occurredAt, created_at AS createdAt,
+                status, status_reason AS statusReason, status_updated_at AS statusUpdatedAt
          FROM memory_events
+         WHERE status = 'active'
          ORDER BY occurred_at DESC, created_at DESC
          LIMIT ?`
       ).all(limit);
@@ -176,8 +200,10 @@ function createRepository(db, now = () => new Date()) {
     findRelevantMemoryEvents(queryTokens, limit = 6) {
       const rows = db.prepare(
         `SELECT id, conversation_id AS conversationId, source_message_id AS sourceMessageId,
-                summary, score, occurred_at AS occurredAt, created_at AS createdAt
+                summary, score, occurred_at AS occurredAt, created_at AS createdAt,
+                status, status_reason AS statusReason, status_updated_at AS statusUpdatedAt
          FROM memory_events
+         WHERE status = 'active'
          ORDER BY occurred_at DESC, created_at DESC
          LIMIT 200`
       ).all();
@@ -186,11 +212,11 @@ function createRepository(db, now = () => new Date()) {
 
     upsertProfileFact({ kind, value, confidence = 0.6, evidenceMessageId = null }) {
       const existing = db.prepare(
-        `SELECT id, confidence
+        `SELECT id, confidence, status
          FROM profile_facts
          WHERE kind = ? AND value = ?`
       ).get(kind, value);
-      const timestamp = nowIso();
+      const timestamp = nowIso(now);
       if (existing) {
         const nextConfidence = Math.max(Number(existing.confidence) || 0, confidence);
         db.prepare(
@@ -203,38 +229,55 @@ function createRepository(db, now = () => new Date()) {
 
       const id = randomUUID();
       db.prepare(
-        `INSERT INTO profile_facts (id, kind, value, confidence, evidence_message_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      ).run(id, kind, value, confidence, evidenceMessageId, timestamp, timestamp);
+        `INSERT INTO profile_facts (
+           id, kind, value, confidence, evidence_message_id, created_at, updated_at,
+           status, status_reason, status_updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?)`
+      ).run(id, kind, value, confidence, evidenceMessageId, timestamp, timestamp, timestamp);
       return id;
     },
 
     listProfileFacts(limit = 50) {
       return db.prepare(
         `SELECT id, kind, value, confidence, evidence_message_id AS evidenceMessageId,
-                created_at AS createdAt, updated_at AS updatedAt
+                created_at AS createdAt, updated_at AS updatedAt,
+                status, status_reason AS statusReason, status_updated_at AS statusUpdatedAt
          FROM profile_facts
+         WHERE status = 'active'
          ORDER BY confidence DESC, updated_at DESC
          LIMIT ?`
       ).all(limit);
     },
 
+    deleteProfileFact(id) {
+      return db.prepare(`DELETE FROM profile_facts WHERE id = ?`).run(id);
+    },
+
     findRelevantProfileFacts(queryTokens, limit = 6) {
       const rows = db.prepare(
         `SELECT id, kind, value, confidence, evidence_message_id AS evidenceMessageId,
-                created_at AS createdAt, updated_at AS updatedAt
+                created_at AS createdAt, updated_at AS updatedAt,
+                status, status_reason AS statusReason, status_updated_at AS statusUpdatedAt
          FROM profile_facts
+         WHERE status = 'active'
          ORDER BY updated_at DESC
          LIMIT 200`
       ).all();
       return rankByTokenOverlap(rows, (row) => `${row.kind} ${row.value}`, queryTokens, limit, (row) => Number(row.confidence) || 1);
     },
 
+    findEntityCards(entityNames, { factsLimit = 8, eventsLimit = 8 } = {}) {
+      return entityNames
+        .map((name) => buildEntityCard(db, name, { factsLimit, eventsLimit }))
+        .filter(Boolean);
+    },
+
     logRetrieval({ conversationId, userMessageId, query, retrieved }) {
       db.prepare(
         `INSERT INTO retrieval_logs (id, conversation_id, user_message_id, query, retrieved_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(randomUUID(), conversationId, userMessageId, query, JSON.stringify(retrieved), nowIso());
+      ).run(randomUUID(), conversationId, userMessageId, query, JSON.stringify(retrieved), nowIso(now));
     },
 
     getMessagesForDate(date) {
@@ -249,9 +292,10 @@ function createRepository(db, now = () => new Date()) {
     getProfileFactsForDate(date) {
       return db.prepare(
         `SELECT id, kind, value, confidence, evidence_message_id AS evidenceMessageId,
-                created_at AS createdAt, updated_at AS updatedAt
+                created_at AS createdAt, updated_at AS updatedAt,
+                status, status_reason AS statusReason, status_updated_at AS statusUpdatedAt
          FROM profile_facts
-         WHERE substr(updated_at, 1, 10) = ?
+         WHERE status = 'active' AND substr(updated_at, 1, 10) = ?
          ORDER BY confidence DESC, updated_at DESC`
       ).all(date);
     },
@@ -260,7 +304,7 @@ function createRepository(db, now = () => new Date()) {
       const existing = db.prepare(
         `SELECT id FROM reflections WHERE reflection_date = ?`
       ).get(reflectionDate);
-      const payload = [summary, JSON.stringify(openLoops), JSON.stringify(profileCandidates), nowIso()];
+      const payload = [summary, JSON.stringify(openLoops), JSON.stringify(profileCandidates), nowIso(now)];
       if (existing) {
         db.prepare(
           `UPDATE reflections
@@ -334,7 +378,7 @@ function createRepository(db, now = () => new Date()) {
       db.prepare(
         `INSERT OR REPLACE INTO completion_requests (request_key, response_json, created_at)
          VALUES (?, ?, ?)`
-      ).run(requestKey, JSON.stringify(response), nowIso());
+      ).run(requestKey, JSON.stringify(response), nowIso(now));
     },
 
     saveMessageEmbedding(messageId, embedding, model) {
@@ -342,7 +386,7 @@ function createRepository(db, now = () => new Date()) {
       db.prepare(
         `INSERT OR REPLACE INTO message_embeddings (message_id, embedding_blob, model, created_at)
          VALUES (?, ?, ?, ?)`
-      ).run(messageId, buffer, model, nowIso());
+      ).run(messageId, buffer, model, nowIso(now));
     },
 
     saveMemoryEventEmbedding(memoryEventId, embedding, model) {
@@ -350,7 +394,7 @@ function createRepository(db, now = () => new Date()) {
       db.prepare(
         `INSERT OR REPLACE INTO memory_event_embeddings (memory_event_id, embedding_blob, model, created_at)
          VALUES (?, ?, ?, ?)`
-      ).run(memoryEventId, buffer, model, nowIso());
+      ).run(memoryEventId, buffer, model, nowIso(now));
     },
 
     getAllMessageEmbeddings() {
@@ -377,6 +421,7 @@ function createRepository(db, now = () => new Date()) {
                 me.summary, me.score, me.occurred_at AS occurredAt
          FROM memory_event_embeddings mee
          JOIN memory_events me ON me.id = mee.memory_event_id
+         WHERE me.status = 'active'
          ORDER BY me.occurred_at DESC`
       ).all();
       return rows.map((row) => ({
@@ -404,7 +449,7 @@ function createRepository(db, now = () => new Date()) {
         `SELECT me.id, me.summary
          FROM memory_events me
          LEFT JOIN memory_event_embeddings mee ON mee.memory_event_id = me.id
-         WHERE mee.memory_event_id IS NULL
+         WHERE me.status = 'active' AND mee.memory_event_id IS NULL
          ORDER BY me.occurred_at DESC
          LIMIT ?`
       ).all(limit);
@@ -412,10 +457,30 @@ function createRepository(db, now = () => new Date()) {
 
     createCorrection({ originalText, correctedText, sourceMessageId = null, conversationId = null }) {
       const id = randomUUID();
+      const timestamp = nowIso(now);
+      const target = findCorrectionTarget(db, originalText);
       db.prepare(
-        `INSERT INTO corrections (id, original_text, corrected_text, source_message_id, conversation_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(id, originalText, correctedText, sourceMessageId, conversationId, nowIso());
+        `INSERT INTO corrections (
+           id, original_text, corrected_text, source_message_id, conversation_id, created_at,
+           target_type, target_id, applied_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id,
+        originalText,
+        correctedText,
+        sourceMessageId,
+        conversationId,
+        timestamp,
+        target?.type ?? null,
+        target?.id ?? null,
+        target ? timestamp : null,
+      );
+
+      if (target) {
+        markMemoryItemStatus(db, target.type, target.id, "retracted", correctedText, timestamp);
+      }
+
       return id;
     },
 
@@ -423,7 +488,8 @@ function createRepository(db, now = () => new Date()) {
       return db.prepare(
         `SELECT id, original_text AS originalText, corrected_text AS correctedText,
                 source_message_id AS sourceMessageId, conversation_id AS conversationId,
-                created_at AS createdAt
+                created_at AS createdAt, target_type AS targetType, target_id AS targetId,
+                applied_at AS appliedAt
          FROM corrections
          ORDER BY created_at DESC
          LIMIT ?`
@@ -440,6 +506,124 @@ function deserializeReflection(row) {
     openLoops: JSON.parse(row.openLoopsJson || "[]"),
     profileCandidates: JSON.parse(row.profileCandidatesJson || "[]"),
     createdAt: row.createdAt,
+  };
+}
+
+function buildEntityCard(db, canonicalName, { factsLimit, eventsLimit }) {
+  const definition = getEntityDefinition(canonicalName);
+  if (!definition) {
+    return null;
+  }
+
+  const factRows = db.prepare(
+    `SELECT id, kind, value, confidence, evidence_message_id AS evidenceMessageId,
+            created_at AS createdAt, updated_at AS updatedAt
+     FROM profile_facts
+     WHERE status = 'active'
+     ORDER BY confidence DESC, updated_at DESC
+     LIMIT 500`
+  ).all();
+  const eventRows = db.prepare(
+    `SELECT id, summary, score, occurred_at AS occurredAt, created_at AS createdAt
+     FROM memory_events
+     WHERE status = 'active'
+     ORDER BY occurred_at DESC, created_at DESC
+     LIMIT 500`
+  ).all();
+
+  const facts = factRows
+    .filter((row) => textMentionsAnyAlias(`${row.kind} ${row.value}`, definition.aliases))
+    .slice(0, factsLimit);
+  const events = eventRows
+    .filter((row) => textMentionsAnyAlias(row.summary, definition.aliases))
+    .slice(0, eventsLimit);
+
+  if (facts.length === 0 && events.length === 0) {
+    return null;
+  }
+
+  return {
+    name: definition.canonicalName,
+    aliases: definition.aliases,
+    relationshipState: deriveRelationshipState(definition.canonicalName, facts, events),
+    facts,
+    events,
+  };
+}
+
+function textMentionsAnyAlias(text, aliases) {
+  const normalized = String(text || "");
+  return aliases.some((alias) => normalized.includes(alias));
+}
+
+function deriveRelationshipState(canonicalName, facts, events) {
+  const evidence = [
+    ...facts.map((fact) => fact.value),
+    ...events.map((event) => event.summary),
+  ].filter(Boolean);
+  const joined = evidence.join("\n");
+  const signals = [];
+
+  const hasEndedSignal = /(已结束|分手|断联|删除|拉黑|nice fold|不回应|切断联系|放下)/i.test(joined);
+  const hasActiveSignal = /(恋爱|女朋友|男友|伴侣|亲密|性关系|发生过性|发展关系|好感|暧昧|在一起|牵挂|attachment|lets see where it goes)/i.test(joined);
+  const hasUncertainSignal = /(变化|未定义|探索|不确定|暧昧|早期|lets see|仍在变化)/i.test(joined);
+  const hasUnknownSignal = /(未知|细节还没有展开|之后会详细说明|暂时搁置)/i.test(joined);
+
+  if (hasEndedSignal) signals.push("ended_or_past_signal");
+  if (hasActiveSignal) signals.push("active_or_intimate_signal");
+  if (hasUncertainSignal) signals.push("uncertain_or_changing_signal");
+  if (hasUnknownSignal) signals.push("unknown_details_signal");
+
+  if (hasUnknownSignal && !hasActiveSignal) {
+    return {
+      label: "unknown",
+      confidence: 0.55,
+      guidance: `${canonicalName} 的关系细节不足。不要补全关系类型，只说明已知信息和未知部分。`,
+      signals,
+    };
+  }
+
+  if (hasEndedSignal && hasActiveSignal) {
+    return {
+      label: "conflicting_or_changing",
+      confidence: 0.6,
+      guidance: `${canonicalName} 的关系证据存在冲突或处于变化中。不要直接说“已经结束”“正在恋爱”这类单一状态，除非用户最新明确表述支持。`,
+      signals,
+    };
+  }
+
+  if (hasUncertainSignal) {
+    return {
+      label: "uncertain_or_changing",
+      confidence: 0.68,
+      guidance: `${canonicalName} 的关系状态应表达为未定义/变化中，不要写死成男友、前任或分手。`,
+      signals,
+    };
+  }
+
+  if (hasEndedSignal) {
+    return {
+      label: "past_or_ended",
+      confidence: 0.7,
+      guidance: `${canonicalName} 看起来主要属于过往关系/已处理连接；如要判断当前状态，仍需看最新明确证据。`,
+      signals,
+    };
+  }
+
+  if (hasActiveSignal) {
+    return {
+      label: "active_or_important",
+      confidence: 0.7,
+      guidance: `${canonicalName} 是当前或长期重要关系对象；避免从单条行为过度推断精确关系标签。`,
+      signals,
+    };
+  }
+
+  return {
+    label: "insufficient_evidence",
+    confidence: 0.4,
+    guidance: `${canonicalName} 的关系状态证据不足。只回答 facts/events 中明确出现的内容。`,
+    signals,
   };
 }
 
@@ -465,6 +649,133 @@ function rankByTokenOverlap(rows, textSelector, queryTokens, limit, weightSelect
     .map((entry) => entry.row);
 }
 
+function findCorrectionTarget(db, originalText) {
+  const original = normalizeCorrectionText(originalText);
+  if (!original) {
+    return null;
+  }
+
+  const factRows = db.prepare(
+    `SELECT id, kind, value, confidence, updated_at AS updatedAt
+     FROM profile_facts
+     WHERE status = 'active'
+     ORDER BY updated_at DESC
+     LIMIT 200`
+  ).all();
+  const eventRows = db.prepare(
+    `SELECT id, summary, score, occurred_at AS occurredAt
+     FROM memory_events
+     WHERE status = 'active'
+     ORDER BY occurred_at DESC, created_at DESC
+     LIMIT 200`
+  ).all();
+
+  const candidates = [
+    ...factRows.map((row) => ({
+      type: "profile_fact",
+      id: row.id,
+      text: `${row.kind} ${row.value}`,
+      weight: 1.1 * (Number(row.confidence) || 0.5),
+    })),
+    ...eventRows.map((row) => ({
+      type: "memory_event",
+      id: row.id,
+      text: row.summary,
+      weight: Number(row.score) || 0.5,
+    })),
+  ];
+
+  let best = null;
+  for (const candidate of candidates) {
+    const score = scoreCorrectionCandidate(original, candidate.text) * candidate.weight;
+    if (!best || score > best.score) {
+      best = { ...candidate, score };
+    }
+  }
+
+  // Conservative threshold: corrections should retire old memories only when
+  // the original text clearly points at an existing fact/event.
+  if (!best || best.score < 0.55) {
+    return null;
+  }
+
+  return { type: best.type, id: best.id };
+}
+
+function scoreCorrectionCandidate(originalNormalized, candidateText) {
+  const candidateNormalized = normalizeCorrectionText(candidateText);
+  if (!candidateNormalized) {
+    return 0;
+  }
+
+  if (candidateNormalized.includes(originalNormalized) && originalNormalized.length >= 4) {
+    return 1;
+  }
+
+  if (originalNormalized.includes(candidateNormalized) && candidateNormalized.length >= 8) {
+    return 0.95;
+  }
+
+  const originalTokens = correctionTokens(originalNormalized);
+  const candidateTokens = correctionTokens(candidateNormalized);
+  if (originalTokens.size === 0 || candidateTokens.size === 0) {
+    return 0;
+  }
+
+  let overlap = 0;
+  for (const token of originalTokens) {
+    if (candidateTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  if (overlap < 3) {
+    return 0;
+  }
+
+  return overlap / Math.min(originalTokens.size, candidateTokens.size);
+}
+
+function markMemoryItemStatus(db, targetType, targetId, status, reason, timestamp) {
+  if (targetType === "profile_fact") {
+    db.prepare(
+      `UPDATE profile_facts
+       SET status = ?, status_reason = ?, status_updated_at = ?
+       WHERE id = ? AND status = 'active'`
+    ).run(status, reason, timestamp, targetId);
+    return;
+  }
+
+  if (targetType === "memory_event") {
+    db.prepare(
+      `UPDATE memory_events
+       SET status = ?, status_reason = ?, status_updated_at = ?
+       WHERE id = ? AND status = 'active'`
+    ).run(status, reason, timestamp, targetId);
+  }
+}
+
+function normalizeCorrectionText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "")
+    .trim();
+}
+
+function correctionTokens(text) {
+  const normalized = String(text || "").toLowerCase();
+  const tokens = new Set(
+    normalized
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length >= 2)
+  );
+  const cjkChars = [...normalized.matchAll(/[\u4e00-\u9fff\u3400-\u4dbf]/g)].map((match) => match[0]);
+  for (let i = 0; i < cjkChars.length - 1; i++) {
+    tokens.add(cjkChars[i] + cjkChars[i + 1]);
+  }
+  return tokens;
+}
+
 function tokenize(text) {
   const normalized = String(text || "").toLowerCase();
   const englishTokens = normalized
@@ -475,7 +786,9 @@ function tokenize(text) {
   return new Set([...englishTokens, ...cjkTokens]);
 }
 
-// (nowIso is now defined as a closure inside createRepository)
+function nowIso(now) {
+  return now().toISOString();
+}
 
 const schemaSql = `
 CREATE TABLE IF NOT EXISTS conversations (
@@ -504,7 +817,10 @@ CREATE TABLE IF NOT EXISTS memory_events (
   summary TEXT NOT NULL,
   score REAL NOT NULL DEFAULT 0.5,
   occurred_at TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  status_reason TEXT,
+  status_updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS profile_facts (
@@ -515,6 +831,9 @@ CREATE TABLE IF NOT EXISTS profile_facts (
   evidence_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  status_reason TEXT,
+  status_updated_at TEXT,
   UNIQUE(kind, value)
 );
 
@@ -578,6 +897,9 @@ CREATE TABLE IF NOT EXISTS corrections (
   corrected_text TEXT NOT NULL,
   source_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
   conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  applied_at TEXT
 );
 `;

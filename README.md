@@ -13,8 +13,9 @@
 
 ```
 你说话 → 消息入库 → AI 提取个人资料与记忆事件
+                   → Memory Governance 过滤低质量/误归属记忆
                    → 每日 reflection 总结规律与未完成事项
-                   → 下次对话时检索相关记忆
+                   → 下次对话时检索相关记忆（语义 + 关键词双路）
                    → AI 带着真实记忆回应你
 ```
 
@@ -26,10 +27,14 @@
 
 - **持久记忆** — 每次对话都被存储，AI 自动检索相关历史上下文
 - **个人资料提取** — AI 从对话中学习你的稳定信息（职业、关系、兴趣等）
+- **Memory Governance** — 自动识别并撤回低价值、误归属、过时的记忆条目
+- **Intent Detection** — 每轮对话前检测用户意图（时间查询、记忆查询、纠错、情绪），调整 AI 行为
+- **实体识别** — 规范化人名，防止同一个人被存成多个不同的记录
 - **每日 Reflection** — 每天生成一篇反思：讨论了什么、未完成的线索、演变中的规律
 - **Person Model** — 你自己写的一份关于自己的文本，每次对话都注入系统提示词
 - **流式响应** — 逐 token 输出，体验接近 ChatGPT
-- **iOS & macOS 原生客户端** — SwiftUI 开发，无第三方依赖
+- **iOS & macOS 原生客户端** — SwiftUI 重写，全新 UI，无第三方依赖
+- **完整测试套件** — 覆盖 server、chat-service、extraction、retrieval、memory-governance 等模块
 - **完全自托管** — 数据存在你自己的服务器，除你选择的 LLM 提供商外不与任何第三方共享
 
 ---
@@ -215,15 +220,20 @@ GET  /v1/client/state?conversationId=&clientConversationId=
 ### 记忆数据
 
 ```
-GET  /v1/reflections
-GET  /v1/profile-facts
-GET  /v1/memory-events
+GET    /v1/reflections
+GET    /v1/reflections/:date
+POST   /v1/reflections/daily
+GET    /v1/profile-facts
+POST   /v1/profile-facts
+DELETE /v1/profile-facts/:id
+GET    /v1/memory-events
 ```
 
-### 健康检查
+### 监控
 
 ```
 GET  /health
+GET  /metrics
 ```
 
 ---
@@ -269,10 +279,17 @@ iOS/macOS 客户端
 ```
 
 每轮对话的上下文检索：
-1. 语义搜索记忆事件（embedding 相似度）
-2. 最新每日 reflection
-3. 活跃个人资料
-4. Person Model（`data/person-model.md`）
+1. **最近消息**（200条工作记忆窗口）
+2. **语义搜索**记忆事件（embedding 相似度，取窗口外结果）
+3. **关键词叠加**检索 profile facts（防止低频但重要的条目被截断）
+4. 最新每日 reflection（最近3篇）
+5. Person Model（`data/person-model.md`）
+6. Intent Detection 结果注入提示词
+
+Memory Governance 在每轮提取后运行，自动标记并撤回：
+- 低价值记忆（纯打招呼、无信息量的短语）
+- 误归属事件（把别人的事情记成用户自己的）
+- 已过时的关系状态声明
 
 ---
 
@@ -296,10 +313,14 @@ You talk → messages stored → AI extracts profile facts & memory events
 
 - **Persistent memory** — every conversation stored; AI retrieves relevant past context automatically
 - **Profile extraction** — AI learns stable facts about you from what you tell it
+- **Memory Governance** — automatically retracts low-value, misattributed, or outdated memory entries
+- **Intent Detection** — detects query intent per turn (time queries, memory lookups, corrections, emotional) and adjusts AI behavior accordingly
+- **Entity normalization** — canonical name resolution prevents the same person being stored under multiple aliases
 - **Daily reflection** — written summary each day: topics, open threads, evolving patterns
 - **Person model** — a plain-text file you write about yourself; injected into every conversation
 - **Streaming responses** — token-by-token output
-- **Native iOS & macOS client** — SwiftUI, no third-party dependencies
+- **Native iOS & macOS client** — SwiftUI rewrite, new UI, no third-party dependencies
+- **Full test suite** — covers server, chat-service, extraction, retrieval, memory-governance, and more
 - **Self-hosted** — your data stays on your server
 
 ---

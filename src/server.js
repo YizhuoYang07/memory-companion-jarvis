@@ -173,6 +173,34 @@ export function createServer(chatService, options = {}) {
         return sendJson(response, 200, { profileFacts: chatService.listProfileFacts(50) });
       }
 
+      if (request.method === "POST" && url.pathname === "/v1/profile-facts") {
+        const body = await readJson(request);
+        const VALID_KINDS = new Set([
+          "name", "self_description", "preference", "location",
+          "current_focus", "health", "education", "work", "relationship", "value", "hobby",
+        ]);
+        if (!body.kind || !VALID_KINDS.has(body.kind) || typeof body.value !== "string" || !body.value.trim()) {
+          return sendJson(response, 400, { error: "kind (valid kind string) and value (non-empty string) are required" });
+        }
+        chatService.upsertProfileFact({
+          kind: body.kind,
+          value: body.value.trim(),
+          confidence: typeof body.confidence === "number" ? Math.min(1, Math.max(0, body.confidence)) : 0.95,
+        });
+        return sendJson(response, 200, { profileFacts: chatService.listProfileFacts(50) });
+      }
+
+      if (request.method === "DELETE" && url.pathname.startsWith("/v1/profile-facts/")) {
+        const factId = url.pathname.split("/").filter(Boolean)[2];
+        if (!factId) {
+          return sendJson(response, 400, { error: "fact id is required" });
+        }
+        chatService.deleteProfileFact(factId);
+        response.writeHead(204, { "cache-control": "no-store" });
+        response.end();
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/v1/memory-events") {
         return sendJson(response, 200, { memoryEvents: chatService.listMemoryEvents(50) });
       }

@@ -60,6 +60,14 @@ export function createChatService({ repository, modelProvider, config, now = () 
       return repository.listProfileFacts(limit);
     },
 
+    upsertProfileFact(fact) {
+      return repository.upsertProfileFact(fact);
+    },
+
+    deleteProfileFact(id) {
+      return repository.deleteProfileFact(id);
+    },
+
     listMemoryEvents(limit) {
       return repository.listMemoryEvents(limit);
     },

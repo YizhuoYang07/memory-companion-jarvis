@@ -20,6 +20,7 @@ export async function extractTurnArtifacts(userMessage, assistantMessage, config
   const model = config.extractionModel || config.openAiModel;
   const userText = normalizeWhitespace(userMessage.text);
   const assistantText = normalizeWhitespace(assistantMessage.text);
+  const today = new Date().toISOString().slice(0, 10);
 
   if (!userText) {
     return { memoryEvents: [], profileFacts: [], corrections: [] };
@@ -39,6 +40,8 @@ export async function extractTurnArtifacts(userMessage, assistantMessage, config
 - 不要提取：临时状态（"我今天很累"）、对话管理（"帮我看看"）、重复已知信息
 - 不要提取助手说的话当作用户的事实
 - confidence: 直接陈述 0.85-0.95，间接暗示 0.5-0.7，不确定 < 0.5 则不提取
+- 特别：健康/医疗诊断（心理诊断、正在服用的药物）即使间接提及（"医生说我有..."、"我在吃..."），也以 0.8+ confidence 提取为 health 类事实
+- 特别：重要他人（伴侣、朋友）的稳定信息（姓名、职业、背景）也值得提取，kind 用 relationship，value 中注明该人物信息
 - 格式: [{ "kind": "...", "value": "...", "confidence": 0.0-1.0 }]
 - kind 可选值: name, self_description, preference, location, current_focus, health, education, work, relationship, value, hobby
 
@@ -46,8 +49,11 @@ export async function extractTurnArtifacts(userMessage, assistantMessage, config
 - 只从**用户发言**中提取
 - 值得记住的标准：会影响未来对话的理解、标志生活阶段变化、重要决定或情感转折
 - 不值得记住的：日常闲聊、打招呼、技术调试过程、对话管理
+	- 事件的主角必须是用户本人。如果用户在转述他人的经历，在 summary 中注明"用户描述 [某人]：..."，不要以用户为主语
+	- 严格主语保护：如果用户说"Ho发烧了/Ho被公司叫回/老金怎样/小陈怎样"，summary 不能写成"用户发烧/用户被公司叫回/用户经历..."。必须写"用户描述Ho：Ho发烧了"这类格式
 - score: 重大人生事件 0.8-1.0，有意义的状态变化 0.5-0.7，一般性讨论 < 0.5 则不提取
-- 格式: [{ "summary": "简短摘要（中文）", "score": 0.0-1.0 }]
+- occurred_at: 如果用户提到事件发生时间（"昨天"、"上周"、"4月28日"等），根据今天（${today}）推算实际日期，格式 YYYY-MM-DD；无时间信息填 null
+- 格式: [{ "summary": "简短摘要（中文）", "score": 0.0-1.0, "occurred_at": "YYYY-MM-DD或null" }]
 
 ## 返回格式（严格 JSON，不要 markdown 代码块）
 {"profile_facts": [...], "memory_events": [...], "corrections": [...]}
@@ -102,11 +108,15 @@ export async function extractTurnArtifacts(userMessage, assistantMessage, config
     const memoryEvents = (parsed.memory_events || [])
       .filter((event) => event && typeof event.summary === "string" && event.summary.trim())
       .filter((event) => clamp(Number(event.score) || 0, 0, 1) >= 0.5)
+      .filter((event) => !isLowValueMemoryEvent(event.summary, userText))
       .map((event) => ({
-        summary: truncate(event.summary.trim(), 200),
+        summary: truncate(normalizeMemoryEventSubject(event.summary.trim(), userText), 200),
         score: clamp(Number(event.score) || 0.5, 0, 1),
         sourceMessageId: userMessage.id,
         conversationId: userMessage.conversationId,
+        occurredAt: typeof event.occurred_at === "string" && /^\d{4}-\d{2}-\d{2}$/.test(event.occurred_at)
+          ? event.occurred_at
+          : null,
       }));
 
     const corrections = (parsed.corrections || [])
@@ -147,7 +157,7 @@ function extractTurnArtifactsLegacy(userMessage, assistantMessage) {
   const profileFacts = [];
 
   const normalizedUserText = normalizeWhitespace(userMessage.text);
-  if (normalizedUserText) {
+  if (normalizedUserText && !isLowValueMemoryEvent(normalizedUserText, normalizedUserText)) {
     memoryEvents.push({
       summary: summarizeEvent(normalizedUserText),
       score: 0.6,
@@ -194,6 +204,83 @@ function summarizeAssistantContribution(text) {
 
 function normalizeWhitespace(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+const knownOtherPeople = [
+  "Hunho", "Ho", "老金", "小陈", "Sky", "小申", "Tofu", "小泽", "小梁",
+];
+
+function normalizeMemoryEventSubject(summary, userText) {
+  const subject = detectMentionedOtherPerson(userText);
+  if (!subject || summary.includes(subject) || /^用户描述/.test(summary)) {
+    return summary;
+  }
+
+  if (!looksLikeMisattributedOtherExperience(summary)) {
+    return summary;
+  }
+
+  const stripped = summary
+    .replace(/^用户/u, "")
+    .replace(/^[，。；:：\s]*/u, "")
+    .trim();
+  const eventText = stripped || summary;
+  return `用户描述${subject}：${eventText}`;
+}
+
+const lowValueUtterancePattern = /^(嗯+|呃+|啊+|哦+|噢+|好+|行+|可以+|漂亮|谢谢|谢了|讲完了|讲完|哈哈+|hhh+|ok|okay|yes|no|done)$/iu;
+
+function isLowValueMemoryEvent(summary, userText) {
+  const compactSummary = compactForNoiseCheck(summary);
+  const compactUserText = compactForNoiseCheck(userText);
+  if (!compactSummary) {
+    return true;
+  }
+
+  if (lowValueUtterancePattern.test(compactSummary) || lowValueUtterancePattern.test(compactUserText)) {
+    return true;
+  }
+
+  if (compactSummary.length <= 4 && !containsMemoryAnchor(summary) && !containsMemoryAnchor(userText)) {
+    return true;
+  }
+
+  return false;
+}
+
+function compactForNoiseCheck(text) {
+  return String(text || "")
+    .trim()
+    .replace(/[\s\p{P}\p{S}]+/gu, "")
+    .toLowerCase();
+}
+
+function containsMemoryAnchor(text) {
+  const normalized = String(text || "");
+  if (detectMentionedOtherPerson(normalized)) {
+    return true;
+  }
+  return /(\d{4}|\d{1,2}月\d{1,2}日|今天|昨天|前天|上周|下周|capstone|presentation|Truffles|Kings Cross|UNSW|UTS|Tinder)/iu.test(normalized);
+}
+
+function detectMentionedOtherPerson(text) {
+  const normalized = String(text || "");
+  return knownOtherPeople.find((name) => normalized.includes(name)) || null;
+}
+
+const otherExperienceTerms = [
+  "发烧", "生病", "公司", "召回", "工作", "上班", "下班", "手机", "车行",
+  "足球", "健身", "训练", "发热", "感冒", "被叫回", "临时", "经理", "老板",
+];
+
+function looksLikeMisattributedOtherExperience(summary) {
+  if (!/^用户/.test(summary)) {
+    return false;
+  }
+  if (/^用户(?:经历|被)/.test(summary)) {
+    return true;
+  }
+  return otherExperienceTerms.some((term) => summary.includes(term));
 }
 
 function normalizeCapturedValue(value, kind) {

@@ -90,11 +90,11 @@ async function upgradeTollmReflection(repository, messages, reflectionDate, prof
         messages: [
           {
             role: "system",
-            content: "你是一个个人记忆系统的反思模块。根据用户今天的对话内容，生成一段简洁的每日反思。用中文。只输出JSON。",
+            content: "你是 Jarvis，User 的个人记忆伴侣。你的任务是在每次对话后更新你对这个人的理解——不是记日记，而是更新你对她是谁、她的模式意味着什么的认知。用中文。只输出JSON。",
           },
           {
             role: "user",
-            content: `今天是 ${reflectionDate}。用户今天说了以下内容：\n\n${conversationSummary}\n\n请生成：\n1. summary: 一段2-3句话的反思总结，概括今天的核心话题和用户的状态\n2. open_loops: 用户提到但未解决的事项（数组，每项一句话描述）\n\n返回格式（严格JSON）:\n{"summary": "...", "open_loops": ["...", "..."]}\n\n如果没有明确的未解决事项，open_loops 返回空数组。`,
+            content: `今天是 ${reflectionDate}。User 今天说了以下内容：\n\n${conversationSummary}\n\n请生成：\n1. summary: 一段2-3句话的模式理解。不要总结"今天聊了什么"，而是回答"这些内容揭示了 User 的什么模式或状态"。写成你自己的理解，语气像一个了解她的人在更新自己的认知。\n2. open_loops: User 提到但未解决的事项（数组，每项一句话）。\n\n返回格式（严格JSON）:\n{"summary": "...", "open_loops": ["...", "..."]}\n\n如果没有明确的未解决事项，open_loops 返回空数组。`,
           },
         ],
       }),

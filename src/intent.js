@@ -6,6 +6,16 @@
 
 const INTENT_PATTERNS = [
   {
+    intent: "time_query",
+    patterns: [
+      /今天/, /昨天/, /前天/, /明天/, /刚才/, /上次/, /这几天/, /近几天/, /前几天/,
+      /哪天/, /什么时候/, /几号/, /几月几号/, /多久以前/, /多久之前/, /上周/, /这周/,
+      /today/i, /yesterday/i, /when/i, /last time/i, /what date/i,
+    ],
+    hint:
+      "用户的问题依赖时间判断。必须先使用 [Current Time]、Recent message timestamps、[Memory Context] 中的显式时间戳来锚定时间；不要用叙事顺序或语感判断“今天/昨天/上次”。只有事件时间戳落在当前本地日期时才说“今天”；不确定时说“我只能确定是近几天/时间不清楚”，不要猜。",
+  },
+  {
     intent: "memory_query",
     patterns: [
       /你记[得不]/, /我之前/, /我上次/, /我们聊过/, /我说过/, /你还记/, /之前提到/,

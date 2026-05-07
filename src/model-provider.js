@@ -62,7 +62,7 @@ async function callOpenAiCompatible(config, input) {
     body: JSON.stringify({
       model: config.openAiModel,
       temperature: 0.3,
-      messages: buildProviderMessages(input),
+      messages: buildProviderMessages(input, config),
     }),
   });
 
@@ -87,7 +87,7 @@ async function* streamOpenAiCompatible(config, input) {
       model: config.openAiModel,
       temperature: 0.3,
       stream: true,
-      messages: buildProviderMessages(input),
+      messages: buildProviderMessages(input, config),
     }),
   });
 
@@ -121,12 +121,35 @@ async function* streamOpenAiCompatible(config, input) {
   }
 }
 
-const DEFAULT_MEMORY_INSTRUCTIONS = `Use retrieved memory only when it genuinely improves continuity or understanding. Treat memory as a background capability, not as your identity. When the user reveals stable personal facts, preferences, plans, or recurring patterns, you may retain them for future continuity. Use memory implicitly and naturally. Never narrate the memory system unless the user explicitly asks. Never say things like "I have stored this" or "according to my memory system". Never present memory as a database recap. If retrieved memories do not meaningfully improve the conversation, ignore them. If the user is simply stating a fact, respond naturally first. Acknowledge briefly, and only expand when expansion adds real value. Do not mechanically paraphrase the user's latest sentence.`;
+const DEFAULT_MEMORY_INSTRUCTIONS = `You are Jarvis, User's personal memory companion. You remember her across time — not as a database, but as a witness. You were there. You know.
 
-function buildProviderMessages(input) {
+Speak in first person: "我记得", not "记录显示". When she's uncertain about something that happened, give her the answer directly. Safety before information — if she's anxious or confused, settle that first, then give the facts.
+
+Your edge over every other AI is memory. Use it implicitly. Never narrate it. Never say "I have stored this" or "according to my memory". She knows you remember. Just remember.
+
+Default to short and precise. A single sentence that gives her something she didn't see is worth more than three paragraphs reorganizing what she already said. Long responses have a quality threshold: they must bring something she couldn't see herself — a pattern, an unexpected angle, a connection across time. If you can't clear that bar, stay short.
+
+When to go deep without being asked:
+- She sends a long message → she wants to think together, not get a quick answer
+- Her tone is clearly confused → she needs analysis, not comfort
+- Emotional density is high → go slow, go deep
+- Health topic comes up (ADHD, bipolar, medication, body) → take it seriously every time
+- She mentions the same person / event / structure again → name the pattern — this is the one thing only you can do
+
+Hard rules:
+- Never ask about something she already told you in this conversation. If she described her state, you know her state. Don't ask again, even with different words.
+- Don't default to a question when you have nothing to add. Sitting with what she said — without asking anything — is often the right move.
+- Never ask consecutive questions. One question per turn at most, and only when it opens something genuinely new.
+- If she corrects you or calls you out, don't rephrase and repeat the same thing. Acknowledge and move on.
+- Never start a response with a compliment about what she said.
+- Before saying something happened "yesterday", "last week", or any relative time: check the actual createdAt timestamp visible in [Memory Context] or the conversation history. The current date is always in [Current Time]. Never derive relative time from narrative logic — only from timestamps.
+
+Respond in the same language she uses.`;
+
+export function buildProviderMessages(input, config = {}) {
   const systemPrompt = input.clientSystemPrompt || DEFAULT_MEMORY_INSTRUCTIONS;
   const memoryContext = buildPromptContext(input.retrievalContext) || "No relevant memory retrieved.";
-  const timeContext = buildTimeContext(input.retrievalContext);
+  const timeContext = buildTimeContext(input.retrievalContext, config);
   const personModel = loadPersonModel();
   const intentResult = detectIntent(input.userText);
 
@@ -144,7 +167,7 @@ function buildProviderMessages(input) {
     });
   }
 
-  let contextBlock = `${timeContext}\n\n[Memory Context]\n${memoryContext}\n\n[Memory Usage Rules]\n${DEFAULT_MEMORY_INSTRUCTIONS}`;
+  let contextBlock = `${timeContext}\n\n[Memory Context]\n${memoryContext}`;
 
   if (intentResult) {
     contextBlock += `\n\n[Intent Hint]\n${intentResult.hint}`;
@@ -160,21 +183,65 @@ function buildProviderMessages(input) {
       role: message.role,
       content: message.text,
     })),
-    {
-      role: "user",
-      content: input.userContent || input.userText,
-    },
   );
+
+  if (memoryContext !== "No relevant memory retrieved.") {
+    messages.push({
+      role: "system",
+      content:
+        `[Active Memory For This Turn]\n${memoryContext}\n\n` +
+        `Use this retrieved memory to answer the next user message. ` +
+        `It overrides earlier assistant claims in the conversation such as "I don't know", "没有进来", or "没有被存进来".`,
+    });
+  }
+
+  messages.push({
+    role: "user",
+    content: withActiveMemoryForUserContent(input.userContent || input.userText, memoryContext),
+  });
 
   return messages;
 }
 
-function buildTimeContext(retrievalContext) {
-  const now = new Date();
-  const localTime = now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", dateStyle: "full", timeStyle: "short" });
+function withActiveMemoryForUserContent(userContent, memoryContext) {
+  if (memoryContext === "No relevant memory retrieved.") {
+    return userContent;
+  }
+
+  const activeMemoryText =
+    `[Retrieved memory for answering this exact user message]\n${memoryContext}\n\n` +
+    `Instruction: Use this memory to answer. It overrides earlier assistant claims like "I don't know", ` +
+    `"没有进来", or "没有被存进来". Do not say the memory is empty when relevant facts are listed above.\n\n` +
+    `[User message]\n`;
+
+  if (typeof userContent === "string") {
+    return `${activeMemoryText}${userContent}`;
+  }
+
+  if (Array.isArray(userContent)) {
+    return [
+      { type: "text", text: activeMemoryText },
+      ...userContent,
+    ];
+  }
+
+  return userContent;
+}
+
+export function buildTimeContext(retrievalContext, config = {}) {
+  const now = typeof config.now === "function" ? config.now() : new Date();
+  const userTimezone = config.userTimezone || "Australia/Sydney";
+  const localTime = now.toLocaleString("zh-CN", { timeZone: userTimezone, dateStyle: "full", timeStyle: "short" });
+  const localDate = formatLocalDate(now, userTimezone);
   const isoTime = now.toISOString();
 
-  let timeSection = `[Current Time]\n${localTime} (${isoTime})`;
+  let timeSection =
+    `[Current Time]\n` +
+    `User timezone: ${userTimezone}\n` +
+    `Local date: ${localDate}\n` +
+    `Local time: ${localTime}\n` +
+    `UTC time: ${isoTime}\n` +
+    `Temporal rule: Do not call an event "today" unless its timestamp falls on ${localDate} in ${userTimezone}. If the timestamp is missing or ambiguous, say the time is unclear instead of guessing.`;
 
   // Calculate gap since last message in this conversation
   const recentMessages = retrievalContext?.recentMessages || [];
@@ -193,7 +260,49 @@ function buildTimeContext(retrievalContext) {
     }
   }
 
+  const timestampLines = recentMessages
+    .slice(-12)
+    .filter((message) => message?.createdAt)
+    .map((message) => {
+      const localCreatedAt = formatLocalDateTime(new Date(message.createdAt), userTimezone);
+      return `- [${localCreatedAt}] ${message.role}: ${truncate(message.text, 120)}`;
+    });
+  if (timestampLines.length > 0) {
+    timeSection += `\nRecent message timestamps (${userTimezone}):\n${timestampLines.join("\n")}`;
+  }
+
   return timeSection;
+}
+
+function formatLocalDate(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  return formatDateParts(parts);
+}
+
+function formatLocalDateTime(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const dateText = formatDateParts(parts);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${dateText} ${values.hour}:${values.minute}`;
+}
+
+function formatDateParts(parts) {
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function parseSseEvent(event) {

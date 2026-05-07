@@ -8,8 +8,8 @@ import { createChatService } from "../src/chat-service.js";
 
 function createHarness() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "memory-system-"));
-  const now = () => new Date("2026-03-10T10:00:00.000Z");
-  const repository = createDatabase(path.join(tempDir, "memory.db"), { now });
+  const mockNow = () => new Date("2026-03-10T10:00:00.000Z");
+  const repository = createDatabase(path.join(tempDir, "memory.db"), { now: mockNow });
   const modelProvider = {
     kind: "test-double",
     async respond(input) {
@@ -19,7 +19,7 @@ function createHarness() {
   const service = createChatService({
     repository,
     modelProvider,
-    now,
+    now: mockNow,
   });
   return { service };
 }
@@ -48,12 +48,12 @@ test("respond extracts profile facts from user messages", async () => {
 
   await service.respond({
     conversationId: conversation.id,
-    text: "My name is Alex and I prefer native Apple clients.",
+    text: "My name is Ricki and I prefer native Apple clients.",
   });
 
   const facts = service.listProfileFacts(20);
-  assert.equal(facts.some((fact) => fact.kind === "name" && fact.value === "Alex and I prefer native Apple clients"), false);
-  assert.equal(facts.some((fact) => fact.kind === "name" && fact.value === "Alex"), true);
+  assert.equal(facts.some((fact) => fact.kind === "name" && fact.value === "Ricki and I prefer native Apple clients"), false);
+  assert.equal(facts.some((fact) => fact.kind === "name" && fact.value === "Ricki"), true);
   assert.equal(facts.some((fact) => fact.kind === "preference" && /native Apple clients/i.test(fact.value)), true);
 });
 
@@ -158,12 +158,12 @@ test("retrieval context excludes the current user turn from prompt history", asy
   capturedInput = null;
   await service.respond({
     conversationId: conversation.id,
-    text: "I was born in 1990.",
+    text: "I was born in 1994.",
   });
 
   assert.ok(capturedInput);
-  assert.equal(capturedInput.userText, "I was born in 1990.");
-  assert.equal(capturedInput.retrievalContext.recentMessages.some((message) => message.text === "I was born in 1990."), false);
-  assert.equal(capturedInput.retrievalContext.relatedMessages.some((message) => message.text === "I was born in 1990."), false);
+  assert.equal(capturedInput.userText, "I was born in 1994.");
+  assert.equal(capturedInput.retrievalContext.recentMessages.some((message) => message.text === "I was born in 1994."), false);
+  assert.equal(capturedInput.retrievalContext.relatedMessages.some((message) => message.text === "I was born in 1994."), false);
   assert.equal(capturedInput.retrievalContext.recentMessages.some((message) => message.text === "I am from China."), true);
 });

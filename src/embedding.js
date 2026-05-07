@@ -3,6 +3,8 @@
  * and calculate cosine similarity between vectors.
  */
 
+const MAX_EMBEDDING_INPUT_CHARS = 6000;
+
 /**
  * Compute embeddings for one or more texts.
  *
@@ -12,6 +14,7 @@
  */
 export async function computeEmbeddings(config, input) {
   const texts = Array.isArray(input) ? input : [input];
+  const embeddingInput = texts.map(normalizeEmbeddingInput);
 
   const response = await fetch(
     `${config.embeddingBaseUrl.replace(/\/$/, "")}/embeddings`,
@@ -23,7 +26,7 @@ export async function computeEmbeddings(config, input) {
       },
       body: JSON.stringify({
         model: config.embeddingModel,
-        input: texts,
+        input: embeddingInput,
       }),
     }
   );
@@ -38,6 +41,14 @@ export async function computeEmbeddings(config, input) {
   return payload.data
     .sort((a, b) => a.index - b.index)
     .map((item) => item.embedding);
+}
+
+export function normalizeEmbeddingInput(text) {
+  const normalized = String(text || "");
+  if (normalized.length <= MAX_EMBEDDING_INPUT_CHARS) {
+    return normalized;
+  }
+  return `${normalized.slice(0, MAX_EMBEDDING_INPUT_CHARS)}\n\n[truncated for embedding]`;
 }
 
 /**
