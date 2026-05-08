@@ -36,6 +36,6 @@ test("embedding config can still reuse OpenAI chat endpoint", () => {
 });
 
 test("user timezone defaults to Sydney and can be overridden", () => {
-  assert.equal(readConfig({}).userTimezone, "Australia/Sydney");
+  assert.equal(readConfig({}).userTimezone, "UTC");
   assert.equal(readConfig({ USER_TIMEZONE: "Asia/Tokyo" }).userTimezone, "Asia/Tokyo");
 });

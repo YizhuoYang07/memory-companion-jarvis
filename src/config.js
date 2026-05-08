@@ -23,7 +23,7 @@ export function readConfig(env = process.env) {
     apiAuthToken: env.API_AUTH_TOKEN?.trim() || null,
     rateLimitMaxRequests: parseInteger(env.RATE_LIMIT_MAX_REQUESTS, 0),
     rateLimitWindowMs: parseInteger(env.RATE_LIMIT_WINDOW_MS, 60_000),
-    userTimezone: env.USER_TIMEZONE?.trim() || "Australia/Sydney",
+    userTimezone: env.USER_TIMEZONE?.trim() || "UTC",
     embeddingBaseUrl,
     embeddingApiKey: embeddingBaseUrl ? embeddingApiKey : null,
     embeddingModel: env.EMBEDDING_MODEL?.trim() || "text-embedding-3-small",

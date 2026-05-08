@@ -48,12 +48,12 @@ test("respond extracts profile facts from user messages", async () => {
 
   await service.respond({
     conversationId: conversation.id,
-    text: "My name is Ricki and I prefer native Apple clients.",
+    text: "My name is User and I prefer native Apple clients.",
   });
 
   const facts = service.listProfileFacts(20);
-  assert.equal(facts.some((fact) => fact.kind === "name" && fact.value === "Ricki and I prefer native Apple clients"), false);
-  assert.equal(facts.some((fact) => fact.kind === "name" && fact.value === "Ricki"), true);
+  assert.equal(facts.some((fact) => fact.kind === "name" && fact.value === "User and I prefer native Apple clients"), false);
+  assert.equal(facts.some((fact) => fact.kind === "name" && fact.value === "User"), true);
   assert.equal(facts.some((fact) => fact.kind === "preference" && /native Apple clients/i.test(fact.value)), true);
 });
 

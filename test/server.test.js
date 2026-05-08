@@ -590,7 +590,7 @@ test("openai-compatible endpoint does not re-import assistant history on later t
           requestId: "assistant-turn-1",
         },
         messages: [
-          { role: "user", content: "My name is Ricki.", id: "assistant-history-user-1" },
+          { role: "user", content: "My name is User.", id: "assistant-history-user-1" },
         ],
       }),
     });
@@ -611,8 +611,8 @@ test("openai-compatible endpoint does not re-import assistant history on later t
           requestId: "assistant-turn-2",
         },
         messages: [
-          { role: "user", content: "My name is Ricki.", id: "assistant-history-user-1" },
-          { role: "assistant", content: "reply for: My name is Ricki.", id: priorAssistant.id },
+          { role: "user", content: "My name is User.", id: "assistant-history-user-1" },
+          { role: "assistant", content: "reply for: My name is User.", id: priorAssistant.id },
           { role: "user", content: "I study in Sydney.", id: "assistant-history-user-2" },
         ],
       }),
@@ -623,11 +623,11 @@ test("openai-compatible endpoint does not re-import assistant history on later t
 
     const messages = service.listMessages(secondPayload.conversation_id);
     assert.equal(messages.length, 4);
-    assert.equal(messages[0].text, "My name is Ricki.");
-    assert.equal(messages[1].text, "reply for: My name is Ricki.");
+    assert.equal(messages[0].text, "My name is User.");
+    assert.equal(messages[1].text, "reply for: My name is User.");
     assert.equal(messages[2].text, "I study in Sydney.");
     assert.equal(messages[3].text, "reply for: I study in Sydney.");
-    assert.equal(messages.filter((message) => message.text === "reply for: My name is Ricki.").length, 1);
+    assert.equal(messages.filter((message) => message.text === "reply for: My name is User.").length, 1);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

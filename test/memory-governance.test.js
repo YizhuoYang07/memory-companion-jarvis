@@ -15,19 +15,19 @@ test("memory governance identifies standalone low-value memory events", () => {
 
 test("memory governance identifies known outdated or misattributed claims conservatively", () => {
   assert.equal(
-    classifyMemoryEventRetraction("用户经历 Ho 发烧、手机碎、去车行和被公司临时召回"),
+    classifyMemoryEventRetraction("用户经历 Person1 发烧、手机碎、去车行和被公司临时召回"),
     "misattributed_other_person_event",
   );
   assert.equal(
-    classifyMemoryEventRetraction("用户描述 Ho：Ho 原本在休假，公司因人手告急临时召回他上班，用户感到诡异"),
+    classifyMemoryEventRetraction("用户描述 Person1：Person1 原本在休假，公司因人手告急临时召回他上班，用户感到诡异"),
     null,
   );
   assert.equal(
-    classifyProfileFactRetraction("与 Ho 的约会关系已结束，用户主动提出分手"),
+    classifyProfileFactRetraction("与 Person1 的约会关系已结束，用户主动提出分手"),
     "outdated_ho_relationship_ending_claim",
   );
   assert.equal(
-    classifyProfileFactRetraction("Ho 的关系状态仍在变化，不能说已经分手"),
+    classifyProfileFactRetraction("Person1 的关系状态仍在变化，不能说已经分手"),
     null,
   );
   assert.equal(
@@ -43,7 +43,7 @@ test("memory governance emits retraction actions without mutating inputs", () =>
       { id: "event-2", summary: "用户完成了 capstone presentation" },
     ],
     profileFacts: [
-      { id: "fact-1", kind: "relationship", value: "与 Ho 的约会关系已结束，用户主动提出分手" },
+      { id: "fact-1", kind: "relationship", value: "与 Person1 的约会关系已结束，用户主动提出分手" },
     ],
   });
 

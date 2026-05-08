@@ -34,7 +34,7 @@ test("LLM extraction post-processing protects other-person subjects", async () =
       {
         id: "user-1",
         conversationId: "conversation-1",
-        text: "Ho 被公司临时叫回去了，而且他有点发烧。",
+        text: "Person1 被公司临时叫回去了，而且他有点发烧。",
       },
       { id: "assistant-1", conversationId: "conversation-1", text: "这听起来很折腾。" },
       { openAiBaseUrl: "https://example.com/v1", openAiApiKey: "key", openAiModel: "extract-test" },
@@ -60,7 +60,7 @@ test("LLM extraction does not rewrite user-subject summaries just because anothe
                 profile_facts: [],
                 memory_events: [
                   {
-                    summary: "用户担心自己对 Ho 的 attachment 变强",
+                    summary: "用户担心自己对 Person1 的 attachment 变强",
                     score: 0.7,
                     occurred_at: null,
                   },
@@ -79,13 +79,13 @@ test("LLM extraction does not rewrite user-subject summaries just because anothe
       {
         id: "user-1",
         conversationId: "conversation-1",
-        text: "我感觉我对 Ho 的 attachment 变强了。",
+        text: "我感觉我对 Person1 的 attachment 变强了。",
       },
       { id: "assistant-1", conversationId: "conversation-1", text: "这是一个值得看的信号。" },
       { openAiBaseUrl: "https://example.com/v1", openAiApiKey: "key", openAiModel: "extract-test" },
     );
 
-    assert.equal(artifacts.memoryEvents[0].summary, "用户担心自己对 Ho 的 attachment 变强");
+    assert.equal(artifacts.memoryEvents[0].summary, "用户担心自己对 Person1 的 attachment 变强");
   } finally {
     globalThis.fetch = originalFetch;
   }

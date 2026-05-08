@@ -43,7 +43,7 @@ test("time intent injects a temporal grounding hint into provider messages", () 
       retrievalContext: emptyRetrievalContext(),
       clientSystemPrompt: "You are Jarvis.",
     },
-    { now: () => new Date("2026-05-05T15:30:00.000Z"), userTimezone: "Australia/Sydney" },
+    { now: () => new Date("2026-05-05T15:30:00.000Z"), userTimezone: "UTC" },
   );
 
   const contextMessage = messages.find((message) => message.role === "system" && message.content.includes("[Intent Hint]"));

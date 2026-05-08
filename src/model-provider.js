@@ -230,7 +230,7 @@ function withActiveMemoryForUserContent(userContent, memoryContext) {
 
 export function buildTimeContext(retrievalContext, config = {}) {
   const now = typeof config.now === "function" ? config.now() : new Date();
-  const userTimezone = config.userTimezone || "Australia/Sydney";
+  const userTimezone = config.userTimezone || "UTC";
   const localTime = now.toLocaleString("zh-CN", { timeZone: userTimezone, dateStyle: "full", timeStyle: "short" });
   const localDate = formatLocalDate(now, userTimezone);
   const isoTime = now.toISOString();

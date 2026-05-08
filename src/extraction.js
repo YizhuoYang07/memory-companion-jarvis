@@ -50,7 +50,7 @@ export async function extractTurnArtifacts(userMessage, assistantMessage, config
 - 值得记住的标准：会影响未来对话的理解、标志生活阶段变化、重要决定或情感转折
 - 不值得记住的：日常闲聊、打招呼、技术调试过程、对话管理
 	- 事件的主角必须是用户本人。如果用户在转述他人的经历，在 summary 中注明"用户描述 [某人]：..."，不要以用户为主语
-	- 严格主语保护：如果用户说"Ho发烧了/Ho被公司叫回/老金怎样/小陈怎样"，summary 不能写成"用户发烧/用户被公司叫回/用户经历..."。必须写"用户描述Ho：Ho发烧了"这类格式
+	- 严格主语保护：如果用户说"X发烧了/X被公司叫回/Y怎样/Z怎样"，summary 不能写成"用户发烧/用户被公司叫回/用户经历..."。必须写"用户描述X：X发烧了"这类格式
 - score: 重大人生事件 0.8-1.0，有意义的状态变化 0.5-0.7，一般性讨论 < 0.5 则不提取
 - occurred_at: 如果用户提到事件发生时间（"昨天"、"上周"、"4月28日"等），根据今天（${today}）推算实际日期，格式 YYYY-MM-DD；无时间信息填 null
 - 格式: [{ "summary": "简短摘要（中文）", "score": 0.0-1.0, "occurred_at": "YYYY-MM-DD或null" }]
@@ -207,7 +207,7 @@ function normalizeWhitespace(text) {
 }
 
 const knownOtherPeople = [
-  "Hunho", "Ho", "老金", "小陈", "Sky", "小申", "Tofu", "小泽", "小梁",
+  // Customize: list canonical names of important other-people entities here
 ];
 
 function normalizeMemoryEventSubject(summary, userText) {
