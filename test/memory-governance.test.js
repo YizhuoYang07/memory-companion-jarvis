@@ -24,7 +24,7 @@ test("memory governance identifies known outdated or misattributed claims conser
   );
   assert.equal(
     classifyProfileFactRetraction("与 Person1 的约会关系已结束，用户主动提出分手"),
-    "outdated_ho_relationship_ending_claim",
+    "outdated_relationship_ending_claim",
   );
   assert.equal(
     classifyProfileFactRetraction("Person1 的关系状态仍在变化，不能说已经分手"),
@@ -32,7 +32,7 @@ test("memory governance identifies known outdated or misattributed claims conser
   );
   assert.equal(
     classifyMemoryEventRetraction("用户的 capstone 失去了 client presentation 汇报机会"),
-    "premature_capstone_outcome_claim",
+    "premature_outcome_claim",
   );
 });
 
@@ -51,7 +51,7 @@ test("memory governance emits retraction actions without mutating inputs", () =>
     actions.map((action) => [action.targetType, action.targetId, action.reason]),
     [
       ["memory_event", "event-1", "low_value_memory_event"],
-      ["profile_fact", "fact-1", "outdated_ho_relationship_ending_claim"],
+      ["profile_fact", "fact-1", "outdated_relationship_ending_claim"],
     ],
   );
 });

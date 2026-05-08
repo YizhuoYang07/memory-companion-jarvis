@@ -41,7 +41,7 @@ test("LLM extraction post-processing protects other-person subjects", async () =
     );
 
     assert.equal(artifacts.memoryEvents.length, 1);
-    assert.equal(artifacts.memoryEvents[0].summary, "用户描述Ho：被公司临时召回，且发烧了");
+    assert.equal(artifacts.memoryEvents[0].summary, "用户描述Person1：被公司临时召回，且发烧了");
   } finally {
     globalThis.fetch = originalFetch;
   }

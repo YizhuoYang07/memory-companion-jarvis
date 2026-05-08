@@ -14,7 +14,7 @@ function emptyRetrievalContext(overrides = {}) {
   };
 }
 
-test("time context uses Sydney timezone by default and exposes recent message timestamps", () => {
+test("time context uses UTC by default and exposes recent message timestamps", () => {
   const context = buildTimeContext(
     emptyRetrievalContext({
       recentMessages: [
@@ -28,11 +28,11 @@ test("time context uses Sydney timezone by default and exposes recent message ti
     { now: () => new Date("2026-05-05T15:30:00.000Z") },
   );
 
-  assert.match(context, /User timezone: Australia\/Sydney/);
-  assert.match(context, /Local date: 2026-05-06/);
-  assert.match(context, /Do not call an event "today" unless its timestamp falls on 2026-05-06/);
-  assert.match(context, /Recent message timestamps \(Australia\/Sydney\):/);
-  assert.match(context, /\[2026-05-06 00:45\] user: Truffles 是今天去的吗？/);
+  assert.match(context, /User timezone: UTC/);
+  assert.match(context, /Local date: 2026-05-05/);
+  assert.match(context, /Do not call an event "today" unless its timestamp falls on 2026-05-05/);
+  assert.match(context, /Recent message timestamps \(UTC\):/);
+  assert.match(context, /\[2026-05-05 14:45\] user: Truffles 是今天去的吗？/);
 });
 
 test("time intent injects a temporal grounding hint into provider messages", () => {

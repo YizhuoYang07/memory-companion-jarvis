@@ -206,8 +206,10 @@ function normalizeWhitespace(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
 
+// EXAMPLE: list canonical names of important other-people entities here.
+// Replace with real names from your entities table.
 const knownOtherPeople = [
-  // Customize: list canonical names of important other-people entities here
+  "Person1", "Person2", "PartnerA", "PartnerB", "PartnerC",
 ];
 
 function normalizeMemoryEventSubject(summary, userText) {

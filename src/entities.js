@@ -1,20 +1,19 @@
 // Entity definitions: who/where/what the user has mentioned that the system
 // should treat as canonical entities (one row instead of many).
 //
-// This file ships as a TEMPLATE. Replace the example entries with the people,
-// places, and projects relevant to the user. Each entity has a canonical_name
-// and a list of aliases — the system will treat any text containing any alias
-// as a mention of that entity.
-//
-// The entities table in the V3 schema (created by scripts/v3-migrate-schema.js)
-// is the canonical store; this file is the source of seed entities used at
-// runtime for routing and entity card construction.
+// This file ships with EXAMPLE PLACEHOLDER entities to make tests pass and
+// demonstrate the structure. Replace these with the actual people, places,
+// and projects relevant to your user.
 
 const ENTITY_DEFINITIONS = [
-  // Examples — replace with your own:
-  // { canonicalName: "Partner",       aliases: ["Partner", "their full name"] },
-  // { canonicalName: "Best Friend",   aliases: ["Best Friend", "their nickname"] },
-  // { canonicalName: "Workplace",     aliases: ["Workplace", "company name"] },
+  // Examples — replace with your own canonical entities.
+  // Each entry has a canonical_name and a list of aliases. Any text containing
+  // any alias is treated as a mention of that entity.
+  { canonicalName: "Person1",  aliases: ["Person1"] },
+  { canonicalName: "Person2",  aliases: ["Person2"] },
+  { canonicalName: "PartnerA", aliases: ["PartnerA"] },
+  { canonicalName: "PartnerB", aliases: ["PartnerB"] },
+  { canonicalName: "PartnerC", aliases: ["PartnerC"] },
 ];
 
 export function detectEntityNames(text) {
